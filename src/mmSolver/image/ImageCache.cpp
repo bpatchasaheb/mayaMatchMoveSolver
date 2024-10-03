@@ -606,7 +606,7 @@ ImageCache::GPUCacheValue ImageCache::gpu_find_item(
 
     const GPUGroupKey item_key = mmsolver::hash::make_hash(file_path);
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::gpu_find_item: "
-                      << "item_key=" << item_key << "file_path=\""
+                      << "item_key=" << item_key << " file_path=\""
                       << file_path.c_str() << "\"");
     return ImageCache::gpu_find_item(item_key);
 }
@@ -635,7 +635,7 @@ ImageCache::CPUCacheValue ImageCache::cpu_find_item(
 
     const CPUGroupKey item_key = mmsolver::hash::make_hash(file_path);
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::cpu_find_item: "
-                      << "item_key=" << item_key << "file_path=\""
+                      << "item_key=" << item_key << " file_path=\""
                       << file_path.c_str() << "\"");
     return ImageCache::cpu_find_item(item_key);
 }
@@ -663,7 +663,6 @@ CacheEvictionResult ImageCache::gpu_evict_one_item(
     const bool verbose = false;
 
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::gpu_evict_one_item: ");
-
     MMSOLVER_MAYA_VRB(
         "mmsolver::ImageCache::gpu_evict_one_item: "
         "before m_gpu_used_bytes="
@@ -675,7 +674,13 @@ CacheEvictionResult ImageCache::gpu_evict_one_item(
         return CacheEvictionResult::kNotNeeded;
     }
 
+    if (m_gpu_key_list.empty()) {
+        return CacheEvictionResult::kNotNeeded;
+    }
     const GPUCacheKey item_key = m_gpu_key_list.front();
+    if (item_key == 0) {
+        return CacheEvictionResult::kFailed;
+    }
     const GPUMapIt item_key_iterator = m_gpu_item_map.find(item_key);
     assert(item_key_iterator != m_gpu_item_map.end());
 
@@ -699,7 +704,6 @@ CacheEvictionResult ImageCache::cpu_evict_one_item() {
     const bool verbose = false;
 
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::cpu_evict_one_item: ");
-
     MMSOLVER_MAYA_VRB(
         "mmsolver::ImageCache::cpu_evict_one_item: "
         "before m_cpu_used_bytes="
@@ -710,7 +714,13 @@ CacheEvictionResult ImageCache::cpu_evict_one_item() {
         return CacheEvictionResult::kNotNeeded;
     }
 
+    if (m_cpu_key_list.empty()) {
+        return CacheEvictionResult::kNotNeeded;
+    }
     const CPUCacheKey item_key = m_cpu_key_list.front();
+    if (item_key == 0) {
+        return CacheEvictionResult::kFailed;
+    }
     const CPUMapIt item_key_iterator = m_cpu_item_map.find(item_key);
     assert(item_key_iterator != m_cpu_item_map.end());
 
@@ -816,19 +826,19 @@ size_t ImageCache::gpu_remove_item_from_group(const GPUCacheKey item_key) {
         << item_key);
 
     size_t count = 0;
-    std::vector<GPUGroupKey> group_keys;
-    for (auto it = m_gpu_group_map.begin(); it != m_gpu_group_map.end(); ++it) {
+    for (auto it = m_gpu_group_map.begin(); it != m_gpu_group_map.end();
+         /* no increment */) {
         const GPUCacheString group_name = it->first;
         GPUGroupSet &values_set = it->second;
 
         const GPUGroupKey group_key = mmsolver::hash::make_hash(group_name);
 
         // NOTE: This is a O(n) linear operation.
-        for (auto it2 = values_set.begin(); it2 != values_set.end(); ++it2) {
+        for (auto it2 = values_set.begin(); it2 != values_set.end();
+             /* no increment */) {
             const GPUGroupKey item_value_hash = mmsolver::hash::make_hash(*it2);
 
             if (item_key == item_value_hash) {
-                group_keys.push_back(group_key);
                 it2 = values_set.erase(it2);
                 count += 1;
                 MMSOLVER_MAYA_VRB(
@@ -839,11 +849,17 @@ size_t ImageCache::gpu_remove_item_from_group(const GPUCacheKey item_key) {
                 MMSOLVER_MAYA_VRB("mmsolver::ImageCache::gpu_erase_item: "
                                   << "item_key=" << item_key
                                   << " item_value_hash=" << item_value_hash);
+                ++it2;
             }
         }
 
+        MMSOLVER_MAYA_VRB("mmsolver::ImageCache::gpu_erase_item: "
+                          << "values_set.size()=" << values_set.size());
+
         if (values_set.size() == 0) {
             it = m_gpu_group_map.erase(it);
+        } else {
+            ++it;
         }
     }
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::gpu_erase_item: "
@@ -861,19 +877,19 @@ size_t ImageCache::cpu_remove_item_from_group(const CPUCacheKey item_key) {
         << item_key);
 
     size_t count = 0;
-    std::vector<CPUGroupKey> group_keys;
-    for (auto it = m_cpu_group_map.begin(); it != m_cpu_group_map.end(); ++it) {
+    for (auto it = m_cpu_group_map.begin(); it != m_cpu_group_map.end();
+         /* no increment */) {
         const CPUCacheString group_name = it->first;
         CPUGroupSet &values_set = it->second;
 
         const CPUGroupKey group_key = mmsolver::hash::make_hash(group_name);
 
         // NOTE: This is a O(n) linear operation.
-        for (auto it2 = values_set.begin(); it2 != values_set.end(); ++it2) {
+        for (auto it2 = values_set.begin(); it2 != values_set.end();
+             /* no increment */) {
             const CPUGroupKey item_value_hash = mmsolver::hash::make_hash(*it2);
 
             if (item_key == item_value_hash) {
-                group_keys.push_back(group_key);
                 it2 = values_set.erase(it2);
                 count += 1;
                 MMSOLVER_MAYA_VRB(
@@ -884,11 +900,17 @@ size_t ImageCache::cpu_remove_item_from_group(const CPUCacheKey item_key) {
                 MMSOLVER_MAYA_VRB("mmsolver::ImageCache::cpu_erase_item: "
                                   << "item_key=" << item_key
                                   << " item_value_hash=" << item_value_hash);
+                ++it2;
             }
         }
 
+        MMSOLVER_MAYA_VRB("mmsolver::ImageCache::cpu_erase_item: "
+                          << "values_set.size()=" << values_set.size());
+
         if (values_set.size() == 0) {
             it = m_cpu_group_map.erase(it);
+        } else {
+            ++it;
         }
     }
     MMSOLVER_MAYA_VRB("mmsolver::ImageCache::cpu_erase_item: "
